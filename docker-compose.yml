@@ -1,0 +1,64 @@
+version: "3.9"
+
+services:
+  frontend:
+    build: ./frontend
+    container_name: plantura-frontend
+    # Senior Move: Protecting the web server
+    mem_limit: 256m
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    networks:
+      - public
+    restart: unless-stopped
+
+  backend:
+    build: ./backend
+    container_name: plantura-backend
+    ports:
+      - "3000:3000"
+    # Given the 200MB leak per request, 512MB allows 2 orders before restart
+    mem_limit: 512m
+    environment:
+      - MONGODB_URL=mongodb://plantura-mongo:27017/plantura
+    depends_on:
+      mongo:
+        condition: service_healthy
+    networks:
+      - public
+      - private
+    restart: unless-stopped
+    healthcheck:
+      # Using /orders since we know it exists in their code
+      test: ["CMD", "curl", "-f", "http://localhost:3000/orders"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  mongo:
+    image: mongo:7
+    container_name: plantura-mongo
+    # Database protection
+    mem_limit: 256m
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - private
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  mongo_data:
+
+networks:
+  public:
+    driver: bridge
+  private:
+    driver: bridge
+    internal: true
